@@ -1,0 +1,153 @@
+version: "3.8"
+
+# Full-stack simulation: Autoware + all monitoring nodes + web dashboard.
+#
+# Usage (Planning Simulator):
+#   SIM_MODE=planning docker compose -f docker-compose.full.yaml up
+#
+# Usage (Rosbag Replay):
+#   SIM_MODE=rosbag BAG_FILE=/path/to/bag.db3 \
+#     docker compose -f docker-compose.full.yaml up
+#
+# Usage (AWSIM):
+#   SIM_MODE=awsim docker compose -f docker-compose.full.yaml up
+#
+# Dashboard: http://localhost:3000
+# API:       http://localhost:8080/status
+
+x-autoware: &autoware
+  image: ghcr.io/autowarefoundation/autoware:latest-cuda
+  network_mode: host
+  ipc: host
+  privileged: true
+  environment:
+    - DISPLAY=${DISPLAY:-:0}
+    - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+  volumes:
+    - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    - ./maps:/autoware_map:ro
+    - ./config:/autoware_config:ro
+    - ./results:/results
+    - autoware_logs:/tmp
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: 1
+            capabilities: [gpu]
+
+services:
+  # ----------------------------------------------------------------
+  # Core simulator (controlled by SIM_MODE env var)
+  # ----------------------------------------------------------------
+  autoware:
+    <<: *autoware
+    container_name: autoware_core
+    command: >
+      bash -c "
+        source /opt/autoware/setup.bash
+        case '${SIM_MODE:-planning}' in
+          planning)
+            exec ros2 launch autoware_launch planning_simulator.launch.xml
+              map_path:=/autoware_map/nishishinjuku_autoware_map
+              vehicle_model:=sample_vehicle
+              sensor_model:=sample_sensor_kit
+            ;;
+          rosbag)
+            ros2 launch autoware_launch logging_simulator.launch.xml
+              map_path:=/autoware_map/nishishinjuku_autoware_map
+              vehicle_model:=sample_vehicle
+              sensor_model:=sample_sensor_kit &
+            sleep 15
+            exec ros2 bag play '${BAG_FILE:-/autoware_map/rosbag/sample.db3}' --clock 200 -r 1.0
+            ;;
+          awsim)
+            exec ros2 launch autoware_launch e2e_simulator.launch.xml
+              map_path:=/autoware_map/awsim_labs_map
+              vehicle_model:=awsim_labs_vehicle
+              sensor_model:=awsim_labs_sensor_kit
+            ;;
+        esac
+      "
+
+  # ----------------------------------------------------------------
+  # Speed monitor
+  # ----------------------------------------------------------------
+  speed_monitor:
+    <<: *autoware
+    container_name: autoware_speed_monitor
+    depends_on: [autoware]
+    command: >
+      bash -c "
+        source /opt/autoware/setup.bash &&
+        pip install -e /autoware_config/../apps/speed_monitor --quiet &&
+        ros2 run speed_monitor speed_monitor
+          --ros-args
+          -p speed_limit_kmh:=50.0
+          -p log_path:=/results/speed_log.csv
+      "
+    volumes:
+      - ./maps:/autoware_map:ro
+      - ./config:/autoware_config:ro
+      - ./apps:/apps:ro
+      - ./results:/results
+      - autoware_logs:/tmp
+
+  # ----------------------------------------------------------------
+  # Violation logger
+  # ----------------------------------------------------------------
+  violation_logger:
+    <<: *autoware
+    container_name: autoware_violation_logger
+    depends_on: [autoware]
+    command: >
+      bash -c "
+        source /opt/autoware/setup.bash &&
+        pip install -e /apps/violation_logger --quiet &&
+        ros2 run violation_logger violation_logger
+          --ros-args
+          -p speed_limit_kmh:=50.0
+          -p log_path:=/results/violations.json
+      "
+    volumes:
+      - ./maps:/autoware_map:ro
+      - ./config:/autoware_config:ro
+      - ./apps:/apps:ro
+      - ./results:/results
+      - autoware_logs:/tmp
+
+  # ----------------------------------------------------------------
+  # Dashboard API backend
+  # ----------------------------------------------------------------
+  dashboard_backend:
+    <<: *autoware
+    container_name: autoware_dashboard_backend
+    depends_on: [autoware]
+    ports:
+      - "8080:8080"
+    command: >
+      bash -c "
+        source /opt/autoware/setup.bash &&
+        pip install fastapi uvicorn[standard] --quiet &&
+        cd /apps/web_dashboard/backend &&
+        python main.py
+      "
+    volumes:
+      - ./apps:/apps:ro
+      - autoware_logs:/tmp
+
+  # ----------------------------------------------------------------
+  # Dashboard frontend
+  # ----------------------------------------------------------------
+  dashboard_frontend:
+    image: nginx:alpine
+    container_name: autoware_dashboard_frontend
+    ports:
+      - "3000:80"
+    volumes:
+      - ./apps/web_dashboard/frontend/src:/usr/share/nginx/html:ro
+    restart: unless-stopped
+
+volumes:
+  autoware_logs:

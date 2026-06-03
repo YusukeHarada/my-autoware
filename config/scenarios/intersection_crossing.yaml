@@ -1,0 +1,49 @@
+# Intersection crossing scenario.
+# Ego approaches a T-intersection; a cross-traffic vehicle enters from the right.
+# Ego must yield (stop or slow below 5 km/h) before proceeding.
+
+ScenarioFormatVersion: "2.1.0"
+ScenarioName: "IntersectionCrossing"
+ScenarioDescription: "Ego yields to cross traffic at a T-intersection."
+HostVehicle: sample_vehicle
+Map:
+  Filepath: /autoware_map/nishishinjuku_autoware_map
+
+Entities:
+  - name: ego
+    type: EgoVehicle
+    InitialState:
+      position: { x: 0.0,  y: 0.0, z: 0.0 }
+      heading: 0.0
+      speed: 5.56   # 20 km/h approaching intersection
+
+  - name: cross_vehicle
+    type: NPC
+    subtype: Car
+    InitialState:
+      position: { x: 25.0, y: -10.0, z: 0.0 }
+      heading: 1.5708   # travelling perpendicular (north)
+      speed: 6.94       # 25 km/h
+
+Events:
+  - name: SetGoal
+    trigger: { type: Elapsed, value: 0.5 }
+    action:
+      type: SetGoalPose
+      entity: ego
+      position: { x: 60.0, y: 0.0, z: 0.0 }
+
+  - name: Engage
+    trigger: { type: Elapsed, value: 1.0 }
+    action: { type: Engage, entity: ego }
+
+Success:
+  # Ego slows to < 5 km/h near the intersection and then proceeds
+  - condition:
+      type: EgoPassedPose
+      position: { x: 50.0, y: 0.0 }
+      tolerance: 5.0
+
+Failure:
+  - condition: { type: Collision, entities: [ego, cross_vehicle] }
+  - condition: { type: Elapsed, value: 90.0 }

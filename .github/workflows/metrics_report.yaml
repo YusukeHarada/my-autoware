@@ -1,0 +1,62 @@
+name: Driving Metrics Report
+
+on:
+  workflow_run:
+    workflows: ["Autoware Scenario CI"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "scenario_ci run ID to fetch logs from"
+        required: false
+
+jobs:
+  generate-report:
+    name: Analyze and publish metrics report
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install analyzer
+        run: pip install matplotlib
+
+      - name: Download scenario artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: scenario-results-${{ github.event.workflow_run.run_number }}
+          path: results/
+        continue-on-error: true  # first runs won't have artifacts
+
+      - name: Generate metrics report
+        run: |
+          python -m apps.metrics_analyzer.metrics_analyzer.analyze \
+            --speed-log  results/speed_log.csv \
+            --violations results/violations.json \
+            --out        results/metrics
+        continue-on-error: true
+
+      - name: Upload metrics report
+        uses: actions/upload-artifact@v4
+        with:
+          name: metrics-report-${{ github.run_number }}
+          path: results/metrics/
+          retention-days: 90
+
+      - name: Post summary
+        run: |
+          if [[ -f results/metrics/metrics_summary.json ]]; then
+            echo "## Driving Metrics" >> $GITHUB_STEP_SUMMARY
+            echo '```json' >> $GITHUB_STEP_SUMMARY
+            cat results/metrics/metrics_summary.json >> $GITHUB_STEP_SUMMARY
+            echo '```' >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No metrics data available." >> $GITHUB_STEP_SUMMARY
+          fi
