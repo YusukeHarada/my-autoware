@@ -1,0 +1,56 @@
+name: Autoware Scenario CI
+
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  scenario-test:
+    name: Run Scenario Simulator
+    runs-on: [self-hosted, linux, gpu]   # requires NVIDIA self-hosted runner
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Allow X11 (headless via Xvfb)
+        run: |
+          sudo apt-get install -y xvfb
+          Xvfb :99 -screen 0 1280x720x24 &
+          echo "DISPLAY=:99" >> $GITHUB_ENV
+
+      - name: Pull Autoware image
+        run: docker pull ghcr.io/autowarefoundation/autoware:latest-cuda
+
+      - name: Download sample map
+        run: |
+          mkdir -p maps
+          curl -sL https://github.com/autowarefoundation/sample_data/raw/main/sample-map-nishishinjuku.zip \
+            -o /tmp/map.zip
+          unzip -q /tmp/map.zip -d maps/
+
+      - name: Run scenario tests
+        run: |
+          docker compose run --rm scenario_simulator
+        env:
+          DISPLAY: ${{ env.DISPLAY }}
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scenario-results-${{ github.run_number }}
+          path: results/
+          retention-days: 30
+
+      - name: Check for failures
+        run: |
+          if ls results/*.json 2>/dev/null | xargs grep -l '"result": "failure"' | grep -q .; then
+            echo "::error::One or more scenarios FAILED. See artifacts for details."
+            exit 1
+          fi
+          echo "All scenarios PASSED."

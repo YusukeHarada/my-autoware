@@ -1,0 +1,33 @@
+version: "3.8"
+
+# Web Dashboard for Autoware
+# Starts the FastAPI backend (ROS 2 bridge) and serves the frontend.
+#
+# Usage:
+#   docker compose up
+#   Open: http://localhost:3000
+
+services:
+  backend:
+    image: ghcr.io/autowarefoundation/autoware:latest-cuda
+    container_name: autoware_dashboard_backend
+    network_mode: host
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+    command: >
+      bash -c "
+        source /opt/autoware/setup.bash &&
+        pip install -r requirements.txt --quiet &&
+        python main.py
+      "
+    restart: unless-stopped
+
+  frontend:
+    image: nginx:alpine
+    container_name: autoware_dashboard_frontend
+    ports:
+      - "3000:80"
+    volumes:
+      - ./frontend/src:/usr/share/nginx/html:ro
+    restart: unless-stopped

@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Autoware Dashboard</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Segoe UI', sans-serif; background: #0d1117; color: #e6edf3; display: flex; height: 100vh; }
+
+    #sidebar {
+      width: 280px; padding: 20px; background: #161b22;
+      border-right: 1px solid #30363d; display: flex; flex-direction: column; gap: 16px;
+    }
+    h1 { font-size: 1.1rem; color: #58a6ff; border-bottom: 1px solid #30363d; padding-bottom: 10px; }
+
+    .card { background: #21262d; border-radius: 8px; padding: 16px; }
+    .card label { font-size: 0.75rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; }
+    .value { font-size: 2.2rem; font-weight: 700; line-height: 1.1; }
+    .unit  { font-size: 0.85rem; color: #8b949e; }
+
+    #speed-value { color: #3fb950; }
+    #speed-value.warn { color: #d29922; }
+    #speed-value.alert { color: #f85149; }
+
+    .coord { font-size: 0.85rem; color: #8b949e; margin-top: 4px; }
+
+    #status-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: #3fb950; display: inline-block; margin-right: 6px;
+    }
+    #status-dot.offline { background: #f85149; }
+
+    #map { flex: 1; }
+  </style>
+</head>
+<body>
+  <div id="sidebar">
+    <h1>🚗 Autoware Dashboard</h1>
+
+    <div class="card">
+      <label>接続状態</label>
+      <div style="margin-top:8px">
+        <span id="status-dot" class="offline"></span>
+        <span id="status-text">切断中</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <label>車速</label>
+      <div>
+        <span class="value" id="speed-value">--</span>
+        <span class="unit"> km/h</span>
+      </div>
+    </div>
+
+    <div class="card">
+      <label>位置 (map座標)</label>
+      <div class="coord">X: <span id="pos-x">--</span></div>
+      <div class="coord">Y: <span id="pos-y">--</span></div>
+      <div class="coord">Heading: <span id="heading">--</span>°</div>
+    </div>
+
+    <div class="card">
+      <label>アラート</label>
+      <div id="alert-box" style="margin-top:6px; font-size:0.85rem; color:#8b949e">なし</div>
+    </div>
+  </div>
+
+  <div id="map"></div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script>
+    // Leaflet map centred on Nishi-Shinjuku sample map origin
+    const map = L.map('map').setView([35.689, 139.691], 16);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    const egoMarker = L.circleMarker([35.689, 139.691], {
+      radius: 8, color: '#58a6ff', fillColor: '#58a6ff', fillOpacity: 0.9
+    }).addTo(map);
+
+    let trajectoryLine = null;
+
+    // WebSocket connection
+    const WS_URL = 'ws://localhost:8080/ws';
+    const API_URL = 'http://localhost:8080';
+    const SPEED_WARN  = 40;
+    const SPEED_ALERT = 50;
+
+    function connect() {
+      const ws = new WebSocket(WS_URL);
+
+      ws.onopen = () => {
+        document.getElementById('status-dot').classList.remove('offline');
+        document.getElementById('status-text').textContent = '接続中';
+        fetchTrajectory();
+      };
+
+      ws.onmessage = (e) => {
+        const d = JSON.parse(e.data);
+        const kmh = d.speed_kmh;
+
+        const el = document.getElementById('speed-value');
+        el.textContent = kmh.toFixed(1);
+        el.className = kmh >= SPEED_ALERT ? 'value alert' : kmh >= SPEED_WARN ? 'value warn' : 'value';
+
+        document.getElementById('pos-x').textContent = d.position.x.toFixed(2);
+        document.getElementById('pos-y').textContent = d.position.y.toFixed(2);
+        document.getElementById('heading').textContent = (d.heading * 180 / Math.PI).toFixed(1);
+
+        if (kmh >= SPEED_ALERT) {
+          document.getElementById('alert-box').textContent =
+            `⚠️ 速度超過: ${kmh.toFixed(1)} km/h`;
+          document.getElementById('alert-box').style.color = '#f85149';
+        } else {
+          document.getElementById('alert-box').textContent = 'なし';
+          document.getElementById('alert-box').style.color = '#8b949e';
+        }
+      };
+
+      ws.onclose = () => {
+        document.getElementById('status-dot').classList.add('offline');
+        document.getElementById('status-text').textContent = '再接続中...';
+        setTimeout(connect, 3000);
+      };
+    }
+
+    async function fetchTrajectory() {
+      try {
+        const r = await fetch(`${API_URL}/trajectory`);
+        const geo = await r.json();
+        if (geo.coordinates.length < 2) return;
+        if (trajectoryLine) map.removeLayer(trajectoryLine);
+        // map coords → lat/lng approximate conversion (demo only)
+        const latlngs = geo.coordinates.map(([x, y]) => [35.689 + y * 9e-6, 139.691 + x * 1.1e-5]);
+        trajectoryLine = L.polyline(latlngs, { color: '#f0883e', weight: 3, opacity: 0.8 }).addTo(map);
+      } catch (_) {}
+    }
+
+    connect();
+    setInterval(fetchTrajectory, 5000);
+  </script>
+</body>
+</html>

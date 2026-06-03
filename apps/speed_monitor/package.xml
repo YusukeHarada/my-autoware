@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>speed_monitor</name>
+  <version>0.1.0</version>
+  <description>Speed limit monitor node for Autoware</description>
+  <maintainer email="user@example.com">User</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <depend>autoware_auto_vehicle_msgs</depend>
+  <depend>std_msgs</depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
