@@ -10,3 +10,5 @@ Thumbs.db
 # Editor
 .vscode/
 *.swp
+**/__pycache__/
+**/*.pyc

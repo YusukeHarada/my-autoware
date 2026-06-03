@@ -21,7 +21,6 @@ import struct
 import time
 from typing import Iterator
 
-import cv2
 import numpy as np
 
 
@@ -56,6 +55,7 @@ def _decode_image(data: bytes) -> np.ndarray | None:
 
         arr = np.frombuffer(raw, dtype=np.uint8).reshape(height, width, -1)
         if encoding in ("rgb8", "RGB8"):
+            import cv2
             return cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
         return arr  # bgr8 already
     except Exception:
@@ -144,11 +144,12 @@ def convert(bag_path: pathlib.Path, out_dir: pathlib.Path, target_fps: float):
                 if img is None:
                     continue
 
+                import cv2 as _cv2  # lazy — avoids hard dep at module level
                 steer_norm  = max(-1.0, min(1.0, last_cmd[0] / MAX_STEER_RAD))
                 accel_norm  = max(-1.0, min(1.0, last_cmd[1] / MAX_ACCEL_MS2))
 
                 fname = f"{ts_ns:020d}.png"
-                cv2.imwrite(str(img_dir / fname), img)
+                _cv2.imwrite(str(img_dir / fname), img)
                 writer.writerow([fname, f"{steer_norm:.6f}", f"{accel_norm:.6f}"])
                 f.flush()
                 saved += 1

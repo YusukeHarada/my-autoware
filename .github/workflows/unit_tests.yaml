@@ -1,0 +1,38 @@
+name: Unit Tests
+
+on:
+  push:
+    branches: [main, "feature/**", "claude/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  pytest:
+    name: pytest (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: python3 -m pip install pytest numpy matplotlib
+
+      - name: Run tests
+        run: |
+          PYTHONPATH=apps/metrics_analyzer:apps/e2e_control:apps/violation_logger:apps/perception_eval \
+            python3 -m pytest tests/ -v --tb=short
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pytest-results-py${{ matrix.python-version }}
+          path: junit.xml
+        continue-on-error: true
