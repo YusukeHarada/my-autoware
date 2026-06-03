@@ -1,0 +1,41 @@
+{
+  "name": "Autoware Dev",
+  "image": "ghcr.io/autowarefoundation/autoware:latest-cuda",
+
+  "runArgs": [
+    "--network=host",
+    "--ipc=host",
+    "--privileged",
+    "--gpus=all"
+  ],
+
+  "containerEnv": {
+    "DISPLAY": "${localEnv:DISPLAY}",
+    "RMW_IMPLEMENTATION": "rmw_cyclonedds_cpp"
+  },
+
+  "mounts": [
+    "source=/tmp/.X11-unix,target=/tmp/.X11-unix,type=bind",
+    "source=${localWorkspaceFolder}/maps,target=/autoware_map,type=bind"
+  ],
+
+  "postCreateCommand": "source /opt/autoware/setup.bash && echo 'source /opt/autoware/setup.bash' >> ~/.bashrc",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.pylance",
+        "ms-vscode.cpptools",
+        "twxs.cmake",
+        "ms-iot.vscode-ros",
+        "charliermarsh.ruff"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/bin/python3",
+        "python.linting.enabled": true,
+        "ros.distro": "humble"
+      }
+    }
+  }
+}

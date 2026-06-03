@@ -1,0 +1,17 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>e2e_control</name>
+  <version>0.1.0</version>
+  <description>End-to-end CNN control node for Autoware</description>
+  <maintainer email="user@example.com">User</maintainer>
+  <license>Apache-2.0</license>
+
+  <depend>rclpy</depend>
+  <depend>sensor_msgs</depend>
+  <depend>autoware_auto_control_msgs</depend>
+  <depend>cv_bridge</depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>
