@@ -1,0 +1,129 @@
+version: "3.8"
+
+# Autoware Simulation Environment
+# Supports 3 simulation modes:
+#   1. Planning Simulator  - interactive path planning & obstacle testing
+#   2. Rosbag Replay       - replay recorded sensor data
+#   3. AWSIM               - real-time digital twin (requires AWSIM binary)
+#
+# Usage:
+#   Planning:  docker compose run --rm planning_simulator
+#   Rosbag:    docker compose run --rm rosbag_replay
+#   AWSIM:     docker compose up awsim_simulator
+
+x-autoware-base: &autoware-base
+  image: ghcr.io/autowarefoundation/autoware:latest-cuda
+  network_mode: host
+  ipc: host
+  privileged: true
+  environment:
+    - DISPLAY=${DISPLAY}
+    - LIBGL_ALWAYS_SOFTWARE=0
+    - RMW_IMPLEMENTATION=rmw_cyclonedds_cpp
+    - CYCLONEDDS_URI=file:///autoware/cyclonedds.xml
+  volumes:
+    - /tmp/.X11-unix:/tmp/.X11-unix:rw
+    - ./maps:/autoware_map:ro
+    - ./config:/autoware_config:ro
+
+services:
+  # ----------------------------------------------------------------
+  # 1. Planning Simulator
+  #    - Interactive: set start/goal pose, add dummy obstacles
+  #    - Map: Nishi-Shinjuku (bundled sample)
+  # ----------------------------------------------------------------
+  planning_simulator:
+    <<: *autoware-base
+    container_name: autoware_planning_simulator
+    command: >
+      bash -c "
+        source /opt/autoware/setup.bash &&
+        ros2 launch autoware_launch planning_simulator.launch.xml
+          map_path:=/autoware_map/nishishinjuku_autoware_map
+          vehicle_model:=sample_vehicle
+          sensor_model:=sample_sensor_kit
+      "
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ----------------------------------------------------------------
+  # 2. Rosbag Replay Simulation
+  #    - Replays recorded sensor data through Sensing / Localization /
+  #      Perception stacks
+  #    - Put your .db3 bag files under ./maps/rosbag/
+  # ----------------------------------------------------------------
+  rosbag_replay:
+    <<: *autoware-base
+    container_name: autoware_rosbag_replay
+    command: >
+      bash -c "
+        source /opt/autoware/setup.bash &&
+        ros2 launch autoware_launch logging_simulator.launch.xml
+          map_path:=/autoware_map/nishishinjuku_autoware_map
+          vehicle_model:=sample_vehicle
+          sensor_model:=sample_sensor_kit
+          sensing:=true
+          localization:=true
+          perception:=true
+          planning:=false
+          control:=false
+      "
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ----------------------------------------------------------------
+  # 3. AWSIM Digital Twin Simulator
+  #    - Connects Autoware to the AWSIM Unity binary over localhost
+  #    - Download AWSIM binary first: see scripts/download_awsim.sh
+  # ----------------------------------------------------------------
+  awsim_simulator:
+    <<: *autoware-base
+    container_name: autoware_awsim
+    command: >
+      bash -c "
+        source /opt/autoware/setup.bash &&
+        ros2 launch autoware_launch e2e_simulator.launch.xml
+          map_path:=/autoware_map/awsim_labs_map
+          vehicle_model:=awsim_labs_vehicle
+          sensor_model:=awsim_labs_sensor_kit
+      "
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  # ----------------------------------------------------------------
+  # 4. Scenario Simulator (automated regression testing)
+  #    - Runs OpenSCENARIO-based test scenarios headlessly
+  # ----------------------------------------------------------------
+  scenario_simulator:
+    <<: *autoware-base
+    container_name: autoware_scenario_simulator
+    command: >
+      bash -c "
+        source /opt/autoware/setup.bash &&
+        ros2 launch scenario_test_runner scenario_test_runner.launch.py
+          architecture_type:=awf/universe/20240605
+          record:=false
+          scenario:=/autoware_config/scenarios/sample.yaml
+          sensor_model:=sample_sensor_kit
+          vehicle_model:=sample_vehicle
+      "
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ./maps:/autoware_map:ro
+      - ./config:/autoware_config:ro
+      - ./results:/results

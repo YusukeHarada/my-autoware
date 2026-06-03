@@ -1,0 +1,12 @@
+# Large data files — download with scripts/setup.sh
+maps/
+awsim/
+results/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.swp

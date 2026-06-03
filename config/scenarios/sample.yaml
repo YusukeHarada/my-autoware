@@ -1,0 +1,47 @@
+# Sample OpenSCENARIO-compatible scenario for Autoware Scenario Simulator.
+# Tests basic lane following with a static obstacle.
+
+ScenarioFormatVersion: "2.1.0"
+ScenarioName: "SampleLaneFollowing"
+ScenarioDescription: "Ego vehicle follows a lane and stops before a static obstacle."
+HostVehicle: sample_vehicle
+Map:
+  Filepath: /autoware_map/nishishinjuku_autoware_map
+
+Entities:
+  - name: ego
+    type: EgoVehicle
+    InitialState:
+      position: { x: 0.0, y: 0.0, z: 0.0 }
+      heading: 0.0
+      speed: 0.0
+
+  - name: obstacle_1
+    type: NPC
+    subtype: Car
+    InitialState:
+      position: { x: 30.0, y: 0.0, z: 0.0 }
+      heading: 0.0
+      speed: 0.0
+
+Events:
+  - name: SetGoal
+    trigger: { type: Elapsed, value: 1.0 }
+    action:
+      type: SetGoalPose
+      entity: ego
+      position: { x: 80.0, y: 0.0, z: 0.0 }
+      heading: 0.0
+
+  - name: Engage
+    trigger: { type: Elapsed, value: 2.0 }
+    action:
+      type: Engage
+      entity: ego
+
+Success:
+  - condition: { type: VehicleStopped, entity: ego, tolerance: 2.0, reference: obstacle_1 }
+
+Failure:
+  - condition: { type: Collision, entities: [ego, obstacle_1] }
+  - condition: { type: Elapsed, value: 120.0 }
